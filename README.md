@@ -4,7 +4,7 @@ Lokales E-Mail-Archiv für Windows und Linux. Der Projektumfang und die Entwickl
 
 ## Entwicklung
 
-Die Versionen von Go und Bun stehen in `mise.toml`. Zusätzlich wird `just` benötigt. Mit `mise exec -- just dev` die Weboberfläche starten. `mise exec -- just build-all` erstellt die Windows- und Linux-Binärdateien in `dist/`. Die Binärdateien enthalten die Weboberfläche und benötigen zur Laufzeit nur das jeweilige Zielsystem.
+Die Versionen von Go, Bun und Node.js LTS stehen in `mise.toml`. Zusätzlich wird lokal `just` benötigt. Mit `mise install` die Projektwerkzeuge installieren und mit `mise exec -- just dev` die Weboberfläche starten. `mise exec -- just build-all` erstellt die Windows- und Linux-Binärdateien in `dist/`. Die Binärdateien enthalten die Weboberfläche und benötigen zur Laufzeit nur das jeweilige Zielsystem.
 
 ```text
 mise exec -- just format

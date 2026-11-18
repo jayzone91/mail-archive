@@ -9,7 +9,9 @@ jobs:
         os: [windows-latest, ubuntu-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: jdx/mise-action@v3
-      - uses: extractions/setup-just@v3
-      - run: mise exec -- just typecheck lint test smoke
+      - uses: actions/checkout@v7
+      - uses: jdx/mise-action@v4
+        with:
+          install_args: "go bun node just@1.59.0"
+      - run: mise exec -- node --version
+      - run: mise exec just@1.59.0 -- just typecheck lint test smoke

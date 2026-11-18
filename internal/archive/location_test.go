@@ -61,14 +61,19 @@ func TestArchiveLocationMigration(t *testing.T) {
 	done := make(chan struct{})
 	go func() { defer close(done); location.Work(ctx, slog.New(slog.NewTextHandler(io.Discard, nil))) }()
 	defer func() { cancel(); <-done }()
-	waitStatus := func(status string) {
+	sameDirectory := func(first, second string) bool {
+		a, aErr := os.Stat(first)
+		b, bErr := os.Stat(second)
+		return aErr == nil && bErr == nil && os.SameFile(a, b)
+	}
+	waitStatus := func(status, target string) {
 		t.Helper()
 		for {
 			move, err := location.LastMove(ctx)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if move.Status == status {
+			if move.Status == status && (target == "" || sameDirectory(location.Current(), target)) {
 				return
 			}
 			if move.Status == "failed" && status != "failed" {
@@ -76,12 +81,12 @@ func TestArchiveLocationMigration(t *testing.T) {
 			}
 			select {
 			case <-ctx.Done():
-				t.Fatal(ctx.Err())
+				t.Fatalf("Archivwechsel %s, aktiver Pfad %q, erwartet %q: %v", move.Status, location.Current(), target, ctx.Err())
 			case <-time.After(20 * time.Millisecond):
 			}
 		}
 	}
-	waitStatus("failed")
+	waitStatus("failed", "")
 	if location.Current() != original {
 		t.Fatal("Fehler hat aktiven Pfad geändert")
 	}
@@ -92,10 +97,7 @@ func TestArchiveLocationMigration(t *testing.T) {
 	if err := location.Queue(ctx, target); err != nil {
 		t.Fatal(err)
 	}
-	waitStatus("succeeded")
-	if !equalPath(location.Current(), target) {
-		t.Fatalf("Aktiver Pfad: %s", location.Current())
-	}
+	waitStatus("succeeded", target)
 	if err := store.Verify(object); err != nil {
 		t.Fatal(err)
 	}
@@ -103,14 +105,11 @@ func TestArchiveLocationMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	reopened, err := OpenLocation(ctx, db, dataDir)
-	if err != nil || !equalPath(reopened.Current(), target) {
+	if err != nil || !sameDirectory(reopened.Current(), target) {
 		t.Fatalf("Pfad nach Neustart: %v", err)
 	}
 	if err := location.Queue(ctx, original); err != nil {
 		t.Fatal(err)
 	}
-	waitStatus("succeeded")
-	if !equalPath(location.Current(), original) {
-		t.Fatal("Rückwechsel fehlgeschlagen")
-	}
+	waitStatus("succeeded", original)
 }
