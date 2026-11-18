@@ -1,5 +1,11 @@
 # Codex Agent – Implementierungsplan MailArchive
 
+## Umsetzungsrahmen
+
+MailArchive ist eine lokale E-Mail-Archivierung mit eigener Weboberfläche. MailStore Server dient als funktionale Referenz. Der erste produktive Einsatz ist der Umzug von rund 15 IMAP-Postfächern von Strato zu All-Inkl. Danach übernimmt MailArchive die laufende Sicherung, Suche und Wiederherstellung. Die Grundversion wird vor dem ersten produktiven Einsatz vollständig abgenommen. Die Erweiterungen in Abschnitt 19 beginnen erst danach.
+
+Beim Planungsstand auf `main` enthielt das Repository nur `PLAN.md` und `.gitattributes`. `just` ist im PATH verfügbar. Go und Bun sind über mise installiert und wurden außerhalb der Sandbox mit `mise exec -- go version` und `mise exec -- bun --version` geprüft. Go- und Bun-Befehle über `mise exec -- …` mit der vorgesehenen Sandbox-Freigabe ausführen, einschließlich der `just`-Aufgaben, die diese Werkzeuge aufrufen. In Phase 1 die Tool-Versionen im Projekt festlegen und den Windows-Produktionsbuild reproduzierbar machen.
+
 ## 1. Projektauftrag
 
 Entwickle eine vollständige, lokal betriebene E-Mail-Archivierungssoftware namens **MailArchive**.
@@ -702,13 +708,13 @@ Eigener Migrationsworkflow:
 1. Alle Strato-Postfächer konfigurieren.
 2. Vollständiges Backup starten.
 3. Archiv und Zweitsicherung vollständig prüfen.
-4. Wiederherstellung mit einem Testpostfach verifizieren.
+4. Wiederherstellung mit einem Testpostfach verifizieren. Unmittelbar vor dem Domaintransfer einen Abschlussabgleich aller Quellpostfächer durchführen und die Zweitsicherung für den aktualisierten Bestand verifizieren.
 5. Domaintransfer extern durchführen.
 6. Neue All-Inkl-Postfächer konfigurieren.
 7. Verbindung testen.
 8. Archiv dem jeweiligen Zielpostfach zuordnen.
 9. Alle Nachrichten und Ordner wiederherstellen.
-10. Wiederherstellte Nachrichten überprüfen.
+10. Wiederhergestellte Nachrichten je Ordner anhand von Anzahl, EML-Prüfsummen, IMAP-INTERNALDATE und unterstützten Flags abgleichen. Identische Nachrichten mit ihrer jeweiligen Anzahl berücksichtigen. Solange Strato erreichbar bleibt, vor der Stilllegung auf Nachzügler prüfen und diese sichern, wiederherstellen und verifizieren.
 11. Regelmäßige Backups auf die neuen Postfächer umstellen.
 12. Automatische Bereinigung erst nach erfolgreicher Migration aktivieren.
 
@@ -942,6 +948,10 @@ Implementieren:
 
 **Abnahme:** Ein vollständiges Testpostfach inklusive aller Ordner und Nachrichten wird lokal und überprüfbar archiviert.
 
+### Zwischenabnahme nach Phase 3 – Unabhängige Zweitsicherung
+
+Die Zweitsicherung aus Abschnitt 11 bereits hier implementieren. Sie umfasst konsistente SQLite-Snapshots, vollständige EML-Dateien, versionierte Manifeste und Prüfung am unabhängigen Speicherziel. Vor der Migrationsabnahme einen Snapshot auf einer separaten Instanz zurückspielen und sämtliche referenzierten Dateien prüfen.
+
 ### Phase 4 – Archiv-Weboberfläche
 
 Implementieren:
@@ -1001,13 +1011,11 @@ Implementieren:
 
 **Abnahme:** Backups laufen selbstständig und werden nach einem Neustart wieder aufgenommen.
 
-### Phase 8 – Zweitsicherung und Retention
+### Phase 8 – Retention mit verifizierter Zweitsicherung
 
-Implementieren:
+Die nach Phase 3 abgenommene Zweitsicherung in den Löschpfad integrieren. Implementieren:
 
-- Unabhängige Archiv-Zweitsicherung
-- Snapshot-Manifeste
-- Integritätskontrolle
+- Nachweis der unabhängigen Zweitsicherung anhand des Snapshot-Manifests und erneute Integritätskontrolle vor der Löschung
 - Retention-Regeln
 - Löschvorschau
 - Dry-Run
@@ -1119,7 +1127,7 @@ Das Projekt gilt als funktional abgeschlossen, wenn:
 
 ## 18. Arbeitsanweisung an Codex
 
-Arbeite die Entwicklungsphasen in der angegebenen Reihenfolge ab.
+Arbeite die Entwicklungsphasen mit der Zwischenabnahme für die Zweitsicherung nach Phase 3 ab. Die Phasen sind interne Meilensteine. Der produktive Einsatz beginnt erst nach bestandener Gesamtabnahme.
 
 Beginne mit der Prüfung des tatsächlichen GitHub-Repositories.
 
@@ -1148,3 +1156,13 @@ Nach jeder Phase:
 Bestehende funktionierende Implementierungen erhalten und Änderungen so klein wie sinnvoll halten.
 
 **Wichtig: Datenverlust durch fehlerhafte Archivierung, Migration oder Bereinigung muss durch die Architektur aktiv verhindert werden.**
+
+---
+
+## 19. Spätere Ausbaustufe nach Abnahme der Grundversion
+
+1. **Exchange On-Premises.** Einen eigenen Connector für vollständige und inkrementelle Postfachsicherungen in das lokale Archiv entwickeln. Unterstützte Exchange-Versionen, Authentifizierung und Postfachtypen für diese Ausbaustufe festlegen. Den Betrieb mit einer separaten Exchange-Testinstallation prüfen. [MailStore-Referenz für Exchange Server](https://help.mailstore.com/en/server/Archiving_Emails_from_Microsoft_Exchange)
+2. **Exchange Online und Microsoft 365.** Einen eigenen Connector mit moderner Microsoft-Authentifizierung und auf die ausgewählten Postfächer begrenzten Berechtigungen entwickeln. Die Sicherung mit einem separaten Testmandanten abnehmen. Die archivierten Nachrichten bleiben lokal durchsuchbar. [MailStore-Referenz für Microsoft 365](https://help.mailstore.com/en/server/Archiving_Emails_from_Microsoft_365_-_Modern_Authentication)
+3. **Verschlüsselung archivierter Postfächer.** Archivdaten einschließlich Nachrichten, Metadaten, Suchindex und Zweitsicherungen verschlüsseln. Schlüsselverwaltung, Schlüsselwiederherstellung und die verifizierte Umstellung bestehender Archive vorsehen. Die Wiederherstellung auf einem Ersatzrechner mit gesichertem Schlüssel erproben.
+4. **Eigenständige und unveränderbare Archive.** Archivbestände mit Nachrichten, Metadaten und Integritätsnachweisen separat verwalten, exportieren und auf einem anderen Rechner wieder einbinden. Zusätzlich abgeschlossene Bestände für eine definierte Dauer gegen Änderung und Löschung schützen. Die Unveränderbarkeit auch auf der Speicherebene gegen das vereinbarte Bedrohungsmodell prüfen. Ein Integritätsnachweis macht nachträgliche Veränderungen erkennbar, während eine Speichersperre sie verhindern soll. [MailStore-Referenz für Archivspeicher](https://help.mailstore.com/en/server/index.php?title=Storage_Locations)
+5. **Datenschutzgerechte Archivierung.** Rollen und Zugriffsbeschränkungen je Archiv, nachvollziehbare Zugriffs- und Exportprotokolle, zweckgebundene Aufbewahrungsfristen, Löschsperren und Workflows für Auskunft und Löschung umsetzen. Vor der Umsetzung unveränderbarer Archive die Regeln für Fristablauf, Löschsperren und Zweitsicherungen gemeinsam festlegen. Die Abnahme umfasst dokumentierte Verarbeitungszwecke, Rechtsgrundlagen und Fristen für den konkreten Einsatz sowie Tests für Berechtigungen, Export und Löschung. [DSGVO auf EUR-Lex](https://eur-lex.europa.eu/eli/reg/2016/679/oj/eng/) · [MailStore-Referenz für Aufbewahrung und Löschsperren](https://help.mailstore.com/en/server/Compliance_General)
