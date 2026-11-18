@@ -1,0 +1,106 @@
+package web
+
+import "github.com/jayzone91/mail-archive/internal/accounts"
+import "strconv"
+
+templ accountsView(values []accounts.Account) {
+	<div class="panel">
+		<a href="/accounts/new">Postfach hinzufügen</a>
+		if len(values) == 0 {
+			<p>Es sind noch keine Postfächer eingerichtet.</p>
+		} else {
+			<ul>
+				for _, account := range values {
+					<li>
+						<a href={ templ.SafeURL("/accounts/" + account.ID) }>{ account.Name }</a>
+						<span>{ account.Email } · { account.Host }</span>
+						if account.NeedsPassword {
+							<span>· Passwort neu hinterlegen</span>
+						}
+						if !account.Enabled {
+							<span>· Deaktiviert</span>
+						}
+					</li>
+				}
+			</ul>
+		}
+	</div>
+}
+
+templ accountView(account accounts.Account, message string) {
+	<form class="panel" method="post">
+		if message != "" {
+			<p role="alert" class="alert">{ message }</p>
+		}
+		<label>Anzeigename <input name="name" value={ account.Name } required/></label>
+		<label>E-Mail-Adresse <input type="email" name="email" value={ account.Email } required/></label>
+		<label>IMAP-Server <input name="host" value={ account.Host } required/></label>
+		@numberField("port", "IMAP-Port", account.Port, 1, 65535)
+		<label>
+			TLS-Modus
+			<select name="tls">
+				<option value="implicit" selected?={ account.TLSMode == "implicit" }>IMAP über TLS</option>
+				<option value="starttls" selected?={ account.TLSMode == "starttls" }>STARTTLS</option>
+			</select>
+		</label>
+		<label>Benutzername <input name="username" value={ account.Username } autocomplete="username" required/></label>
+		<label>
+			Passwort
+			<input type="password" name="password" autocomplete="new-password" required?={ account.ID == "" }/>
+		</label>
+		if account.NeedsPassword {
+			<small>Für dieses Postfach ein Passwort hinterlegen und danach die Verbindung testen.</small>
+		} else if account.ID != "" {
+			<small>Leer lassen, um das gespeicherte Passwort zu behalten.</small>
+		}
+		<label>Aktiv <input type="checkbox" name="enabled" checked?={ account.Enabled }/></label>
+		<label>Automatische Sicherung <input type="checkbox" name="auto_backup" checked?={ account.AutoBackup }/></label>
+		<label>
+			Aufbewahrung in Kalendermonaten
+			if account.RetentionMonths > 0 {
+				<input type="number" name="retention" min="1" max="1200" value={ strconv.Itoa(account.RetentionMonths) }/>
+			} else {
+				<input type="number" name="retention" min="1" max="1200" placeholder="Globale Einstellung"/>
+			}
+		</label>
+		<button type="submit">Speichern</button>
+	</form>
+	if account.ID != "" {
+		if account.Enabled {
+			<form method="post" action={ templ.SafeURL("/accounts/" + account.ID + "/backup") }>
+				<button type="submit" name="mode" value="full">Vollsicherung starten</button>
+				<button type="submit" name="mode" value="incremental">Inkrementelle Sicherung starten</button>
+			</form>
+		}
+		<form method="post" action={ templ.SafeURL("/accounts/" + account.ID + "/test") }>
+			<button type="submit">Gespeicherte Verbindung testen und Ordner laden</button>
+		</form>
+		<a href={ templ.SafeURL("/accounts/" + account.ID + "/remove") }>Postfachkonfiguration entfernen</a>
+	}
+}
+
+templ connectionView(folders []string, message string) {
+	<div class="panel">
+		if message != "" {
+			<p role="alert" class="alert">{ message }</p>
+		} else {
+			<p>Verbindung erfolgreich.</p>
+			if len(folders) > 0 {
+				<ul>
+					for _, folder := range folders {
+						<li>{ folder }</li>
+					}
+				</ul>
+			}
+		}
+		<a href="/accounts">Zur Postfachliste</a>
+	</div>
+}
+
+templ removeAccountView(account accounts.Account) {
+	<form class="panel" method="post">
+		<p>Postfachkonfiguration für { account.Name } entfernen? Archivdaten bleiben erhalten.</p>
+		<button type="submit">Konfiguration entfernen</button>
+		<a href={ templ.SafeURL("/accounts/" + account.ID) }>Abbrechen</a>
+	</form>
+}

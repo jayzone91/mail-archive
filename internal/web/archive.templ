@@ -1,0 +1,203 @@
+package web
+
+import "strconv"
+
+templ archiveView(page archivePage) {
+	<section class="archive-shell" aria-label="E-Mail-Archiv">
+		if len(page.Accounts) == 0 {
+			<div class="archive-empty">
+				<p>Es sind noch keine Postfächer eingerichtet.</p>
+				<a href="/accounts/new">Postfach hinzufügen</a>
+			</div>
+		} else {
+			<details class="archive-search" open?={ page.SearchOpen }>
+				<summary><span class="archive-search-icon" aria-hidden="true"></span> Nachrichten suchen</summary>
+				<form action="/archive" class="archive-search-form">
+					<input type="hidden" name="search" value="1"/>
+					<input type="hidden" name="account" value={ page.Account }/>
+					<input type="hidden" name="folder" value={ strconv.FormatInt(page.Folder, 10) }/>
+					<label>Suchbegriff <input name="q" type="search" value={ page.Search } placeholder="Betreff, Adresse oder Inhalt"/></label>
+					<label>
+						Suchbereich
+						<select name="scope" data-archive-scope>
+							<option value="account" selected?={ page.Scope == "account" }>Aktuelles Postfach</option>
+							<option value="folders" selected?={ page.Scope == "folders" }>Bestimmte Ordner dieses Postfachs</option>
+							<option value="all" selected?={ page.Scope == "all" }>Alle Postfächer</option>
+						</select>
+					</label>
+					<details class="archive-search-folders" open?={ page.Scope == "folders" } data-archive-search-folders>
+						<summary>Ordner für die Suche auswählen</summary>
+						@searchFolderChoices(page.Folders, page)
+					</details>
+					<details class="archive-search-extra" open?={ page.Sender != "" || page.From != "" || page.Until != "" }>
+						<summary>Weitere Filter</summary>
+						<div class="archive-extra-fields">
+							<label>Absender <input name="sender" value={ page.Sender }/></label>
+							<label>Von (UTC) <input type="date" name="from" value={ page.From }/></label>
+							<label>Bis (UTC) <input type="date" name="until" value={ page.Until }/></label>
+						</div>
+					</details>
+					<div class="archive-actions">
+						<button class="archive-primary" type="submit">Suchen</button>
+						<a href={ templ.SafeURL(page.folderURL(page.Folder)) }>Suche zurücksetzen</a>
+					</div>
+				</form>
+			</details>
+			<div class={ "archive-workspace", templ.KV("archive-has-preview", page.Preview != nil) }>
+				<details class="archive-folders" open data-archive-folders>
+					<summary>Postfach und Ordner</summary>
+					<form action="/archive" class="archive-account-form">
+						<label>
+							Postfach
+							<select name="account" data-archive-account>
+								for _, account := range page.Accounts {
+									<option value={ account.ID } selected?={ page.Account == account.ID }>{ account.Name } · { account.Email } · { account.Host }</option>
+								}
+							</select>
+						</label>
+						<button type="submit">Anzeigen</button>
+					</form>
+					<nav class="archive-folder-nav" aria-label="Ordner">
+						<a class="archive-folder-link" aria-current={ archiveCurrent(page.Folder == 0) } href={ templ.SafeURL(page.folderURL(0)) }>Alle Ordner</a>
+						@folderTree(page.Folders, page)
+					</nav>
+				</details>
+				<section class="archive-list" aria-label="Nachrichtenliste" data-archive-position={ "/archive?" + page.values().Encode() }>
+					<header class="archive-column-header"><h2>{ page.title() }</h2></header>
+					if len(page.Messages) == 0 {
+						<p class="archive-empty">
+							if page.Scope == "folders" && len(page.SearchFolders) == 0 {
+								Wähle mindestens einen Ordner für die Suche.
+							} else {
+								Keine archivierten Nachrichten gefunden.
+							}
+						</p>
+					} else {
+						<form action="/restore" class="archive-message-form">
+							<ul class="archive-messages">
+								for _, message := range page.Messages {
+									<li class={ "archive-row", templ.KV("archive-row-selected", message.ID==page.Selected) }>
+										<input type="checkbox" name="selected" value={ strconv.FormatInt(message.ID, 10) } aria-label={ "Auswählen: " + subjectOrDefault(message.Subject) }/>
+										<a aria-current={ archiveCurrent(message.ID == page.Selected) } href={ templ.SafeURL(page.messageURL(message.ID, false)) }>
+											<span class="archive-row-top"><strong>{ message.From }</strong><time datetime={ message.Date }>{ archiveDate(message.Date) }</time></span>
+											<span class="archive-subject">{ subjectOrDefault(message.Subject) }</span>
+											<span class="archive-row-meta">
+												if page.Scope == "all" {
+													{ message.Account } ·
+												}
+												{ message.Folder } · { archiveSize(message.Size) }
+											</span>
+										</a>
+									</li>
+								}
+							</ul>
+							<div class="archive-list-footer"><button type="submit">Auswahl wiederherstellen</button></div>
+						</form>
+						if page.Next != "" {
+							<a class="archive-next" href={ templ.SafeURL(page.Next) }>Ältere Nachrichten</a>
+						}
+					}
+				</section>
+				<section class="archive-reader" aria-label="Lesebereich">
+					if page.Preview != nil {
+						@messageView(*page.Preview, page.messageURL(page.Selected, false), page.messageURL(page.Selected, true), "/archive?"+page.values().Encode())
+					} else {
+						<p class="archive-empty">Wähle eine Nachricht zum Lesen aus.</p>
+					}
+				</section>
+			</div>
+		}
+	</section>
+}
+
+templ folderTree(folders []*archiveFolder, page archivePage) {
+	if len(folders)>0 {
+		<ul>
+			for _, folder := range folders {
+				<li>
+					if len(folder.Children)>0 {
+						<details open>
+							<summary>
+								if folder.ID!=0 {
+									<a aria-current={ archiveCurrent(folder.ID == page.Folder) } href={ templ.SafeURL(page.folderURL(folder.ID)) } title={ folder.Path }>{ folder.Name }</a>
+								} else {
+									<span title={ folder.Path }>{ folder.Name }</span>
+								}
+							</summary>
+							@folderTree(folder.Children, page)
+						</details>
+					} else if folder.ID!=0 {
+						<a class="archive-folder-link" aria-current={ archiveCurrent(folder.ID == page.Folder) } href={ templ.SafeURL(page.folderURL(folder.ID)) } title={ folder.Path }>{ folder.Name }</a>
+					}
+				</li>
+			}
+		</ul>
+	}
+}
+
+templ searchFolderChoices(folders []*archiveFolder, page archivePage) {
+	<ul class="archive-folder-choices">
+		for _, folder := range folders {
+			<li>
+				if folder.ID!=0 {
+					<label><input type="checkbox" name="in" value={ strconv.FormatInt(folder.ID, 10) } checked?={ archiveFolderChecked(page,folder.ID) }/> { folder.Name }</label>
+				} else {
+					<span>{ folder.Name }</span>
+				}
+				if len(folder.Children)>0 {
+					@searchFolderChoices(folder.Children, page)
+				}
+			</li>
+		}
+	</ul>
+}
+
+templ messageView(preview archivePreview, textURL, htmlURL, backURL string) {
+	<article class="archive-letter">
+		<a class="archive-back" href={ templ.SafeURL(backURL) }>Zur Nachrichtenliste</a>
+		<header class="archive-letter-header">
+			<p class="archive-row-meta">{ preview.Message.Account } / { preview.Message.Folder }</p>
+			<h2>{ subjectOrDefault(preview.Message.Subject) }</h2>
+			<p><strong>{ preview.Message.From }</strong> <time datetime={ preview.Message.Date }>{ archiveDate(preview.Message.Date) }</time></p>
+			if preview.Message.To != "" {
+				<p>An { preview.Message.To }</p>
+			}
+			if preview.Message.CC != "" {
+				<p>CC { preview.Message.CC }</p>
+			}
+		</header>
+		<div class="archive-actions archive-letter-actions">
+			if preview.HasHTML && preview.ShowHTML {
+				<a href={ templ.SafeURL(textURL) }>Textansicht</a>
+			} else if preview.HasHTML {
+				<a href={ templ.SafeURL(htmlURL) }>HTML-Ansicht</a>
+			}
+			<a href={ templ.SafeURL(archiveURL(preview.Message.ID) + "/eml") }>EML herunterladen</a>
+			<a href={ templ.SafeURL("/restore?kind=message&source=" + strconv.FormatInt(preview.Message.ID, 10)) }>Wiederherstellen</a>
+		</div>
+		if len(preview.Parts)>0 {
+			<ul class="archive-attachments" aria-label="Anhänge">
+				for _, attachment := range preview.Parts {
+					<li><a href={ templ.SafeURL(archiveURL(preview.Message.ID) + "/parts/" + strconv.Itoa(attachment.Index)) }>{ attachment.Name }</a></li>
+				}
+			</ul>
+		}
+		if preview.Note!="" {
+			<p class="alert" role="status">{ preview.Note }</p>
+		}
+		if preview.ShowHTML {
+			<iframe class="mail-preview" title="Isolierte HTML-Ansicht" sandbox="" src={ templ.SafeURL(archiveURL(preview.Message.ID) + "/html") }></iframe>
+		} else if preview.Body!="" {
+			<pre class="mail-body">{ preview.Body }</pre>
+		} else {
+			<p>Kein Textteil verfügbar.</p>
+		}
+	</article>
+}
+
+func subjectOrDefault(subject string) string {
+	if subject == "" {
+		return "(Ohne Betreff)"
+	}
+	return subject
+}

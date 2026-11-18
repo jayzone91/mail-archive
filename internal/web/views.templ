@@ -1,0 +1,225 @@
+package web
+
+import "github.com/jayzone91/mail-archive/internal/config"
+import "github.com/jayzone91/mail-archive/internal/archive"
+import "strconv"
+import "context"
+import "strings"
+import "time"
+
+type navigationPathKey struct{}
+
+type dashboardCounts struct{ Accounts, Messages, Jobs int64 }
+
+func currentNavigation(ctx context.Context, href string) string {
+	path, _ := ctx.Value(navigationPathKey{}).(string)
+	if path == href || (href != "/" && strings.HasPrefix(path, href+"/")) {
+		return "page"
+	}
+	return "false"
+}
+
+templ layout(title string, authenticated bool, content templ.Component) {
+	<!DOCTYPE html>
+	<html lang="de">
+		<head>
+			<meta charset="utf-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<title>{ title } · MailArchive</title>
+			<link rel="stylesheet" href="/assets/app.css"/>
+			<script src="/assets/app.js" defer></script>
+		</head>
+		<body>
+			<a class="skip-link" href="#content">Zum Inhalt</a>
+			<div class={ "layout", templ.KV("guest-layout",!authenticated) }>
+				if authenticated {
+					<aside class="app-sidebar">
+						@brand()
+						<details class="app-menu" open data-app-menu>
+							<summary>Menü</summary>
+							<nav class="app-nav" aria-label="Hauptnavigation">
+								@navigationLink("/", "Übersicht")
+								@navigationLink("/accounts", "Postfächer")
+								@navigationLink("/archive", "Archiv")
+								<div class="nav-section">
+									@navigationLink("/backups", "Sicherungen")
+									@navigationLink("/snapshots", "Zweitsicherungen")
+									@navigationLink("/restore", "Wiederherstellung")
+									@navigationLink("/migration", "Migration")
+									@navigationLink("/retention", "Aufbewahrung")
+								</div>
+								@navigationLink("/settings", "Einstellungen")
+							</nav>
+							<div class="sidebar-actions">
+								@themeButton()
+								<form method="post" action="/logout"><button type="submit" class="button-text">Abmelden</button></form>
+							</div>
+						</details>
+					</aside>
+				} else {
+					<header class="guest-bar">
+						@brand()
+						@themeButton()
+					</header>
+				}
+				<main id="content" tabindex="-1">
+					<header class="page-header"><h1>{ title }</h1></header>
+					@content
+				</main>
+			</div>
+		</body>
+	</html>
+}
+
+templ brand() {
+	<div class="app-brand">
+		<span class="brand-mark" aria-hidden="true"><span></span></span>
+		<span>MailArchive</span>
+	</div>
+}
+
+templ navigationLink(href, label string) {
+	<a href={ templ.SafeURL(href) } aria-current={ currentNavigation(ctx, href) }>{ label }</a>
+}
+
+templ themeButton() {
+	<button id="theme" type="button" class="button-text" aria-pressed="false">Dunkles Design</button>
+}
+
+templ jobMonitor(title, endpoint, fallback string, content templ.Component) {
+	<section class="panel" data-job-monitor={ endpoint }>
+		<h2>{ title }</h2>
+		<p data-job-monitor-note role="status" hidden></p>
+		<div data-job-list>@content</div>
+		<noscript><a href={ templ.SafeURL(fallback) }>Status aktualisieren</a></noscript>
+	</section>
+}
+
+templ jobBadge(status string) {
+	<span class="job-badge" data-status={ status }>{ backupStatus(status) }</span>
+}
+
+templ jobTimestamps(created, started, finished string) {
+	if created != "" || started != "" || finished != "" {
+		<dl class="job-timestamps">
+			@jobTimestamp("Angelegt", created)
+			@jobTimestamp("Gestartet", started)
+			@jobTimestamp("Beendet", finished)
+		</dl>
+	}
+}
+
+templ jobTimestamp(label, value string) {
+	if stamp, err := time.Parse(time.DateTime, value); err == nil {
+		<div>
+			<dt>{ label }</dt>
+			<dd><time datetime={ stamp.Format(time.RFC3339) }>{ stamp.Local().Format("02.01.2006, 15:04:05") }</time></dd>
+		</div>
+	}
+}
+
+templ dashboardView(counts dashboardCounts) {
+	<section class="dashboard-grid" aria-label="Schnellzugriff">
+		<article class="dashboard-feature">
+			<div class="dashboard-copy">
+				<h2>Nachrichtenarchiv</h2>
+				<p>Gesicherte Nachrichten finden, lesen und wiederherstellen.</p>
+				<a class="button button-filled" href="/archive">Archiv öffnen <span aria-hidden="true">↗</span></a>
+			</div>
+			<div class="archive-orbit" aria-hidden="true"><span></span><span></span><span></span><i></i></div>
+		</article>
+		<dl class="dashboard-metrics" aria-label="Archivbestand und Aufträge">
+			<div><dt>Postfächer</dt><dd>{ strconv.FormatInt(counts.Accounts, 10) }</dd></div>
+			<div><dt>Archivierte Nachrichten</dt><dd>{ strconv.FormatInt(counts.Messages, 10) }</dd></div>
+			<div><dt>Aktive Aufträge</dt><dd>{ strconv.FormatInt(counts.Jobs, 10) }</dd></div>
+		</dl>
+		<article class="panel dashboard-card">
+			<h2>Postfächer</h2>
+			<p>Konten verwalten und Verbindungen prüfen.</p>
+			<a class="button" href="/accounts">Postfächer öffnen</a>
+		</article>
+		<article class="panel dashboard-card">
+			<h2>Sicherungen</h2>
+			<p>Aufträge starten und ihren Fortschritt prüfen.</p>
+			<a class="button" href="/backups">Sicherungen öffnen</a>
+		</article>
+	</section>
+}
+
+templ loginView(setup bool, message string) {
+	<form class="panel login-panel" method="post" action="/login">
+		if setup {
+			<p>Öffne die Datei <code>setup-token</code> im Datenverzeichnis von MailArchive und kopiere den Einrichtungscode.</p>
+			<label>Einrichtungscode <input name="setup_token" required autocomplete="off"/></label>
+		}
+		if message != "" {
+			<p class="alert" role="alert">{ message }</p>
+		}
+		<label>
+			Administrationspasswort
+			if setup {
+				<input type="password" name="password" autocomplete="new-password" minlength={ strconv.Itoa(minAdminPasswordLength) } required/>
+			} else {
+				<input type="password" name="password" autocomplete="current-password" required/>
+			}
+		</label>
+		if setup {
+			<button type="submit" class="button-filled">Adminzugang einrichten</button>
+		} else {
+			<button type="submit" class="button-filled">Anmelden</button>
+		}
+	</form>
+}
+
+templ settingsPage(settings config.Settings, archivePath string, move archive.Move, saved bool) {
+	@settingsView(settings, "", saved)
+	<section id="archive-storage" class="panel">
+		<h2>Archivspeicher</h2>
+		<p>Aktueller EML-Pfad <code>{ archivePath }</code></p>
+		if move.Status=="queued" || move.Status=="running" {
+			<p role="status">Archivwechsel nach <code>{ move.Target }</code> { backupStatus(move.Status) }.</p>
+			<a href="/settings#archive-storage">Status aktualisieren</a>
+		} else {
+			if move.Status=="failed" {
+				<p class="alert" role="alert">{ move.Error }</p>
+			}
+			if move.Status=="succeeded" {
+				<p role="status">Archivpfad gewechselt. Die Originaldateien am alten Ort sind weiterhin vorhanden.</p>
+			}
+			<form action="/settings/archive" method="post">
+				<label>Neuer Archivpfad <input name="archive_path" required/></label>
+				<small>Verwende einen absoluten Pfad zu einem separaten, leeren Ordner. MailArchive prüft die Kopie vor der Umschaltung. SQLite bleibt im Datenverzeichnis.</small>
+				<button type="submit">Archivpfad wechseln</button>
+			</form>
+		}
+	</section>
+}
+
+templ settingsView(settings config.Settings, message string, saved bool) {
+	<form class="panel settings-panel" method="post" action="/settings">
+		<h2>Sicherungsregeln</h2>
+		if saved {
+			<p role="status">Einstellungen gespeichert.</p>
+		}
+		if message != "" {
+			<p role="alert" class="alert">{ message }</p>
+		}
+		@numberField("backup_hours", "Backupintervall in Stunden", settings.BackupHours, 1, 8760)
+		<label>Automatische Sicherungen aktivieren <input type="checkbox" name="automatic_backup" checked?={ settings.AutomaticBackup }/></label>
+		@numberField("retention_months", "Aufbewahrung in Kalendermonaten", settings.RetentionMonths, 1, 1200)
+		@numberField("cleanup_hours", "Bereinigungsintervall in Stunden", settings.CleanupHours, 1, 8760)
+		@numberField("workers", "Parallele IMAP-Worker", settings.Workers, 1, 64)
+		@numberField("retries", "Wiederholungsversuche", settings.Retries, 0, 30)
+		<button type="submit" class="button-filled">Speichern</button>
+	</form>
+	<form action="/archive/reindex" method="post">
+		<button type="submit">Suchindex neu aufbauen</button>
+	</form>
+}
+
+templ numberField(name, label string, value, minimum, maximum int) {
+	<label>
+		{ label }
+		<input type="number" name={ name } value={ strconv.Itoa(value) } min={ strconv.Itoa(minimum) } max={ strconv.Itoa(maximum) } required/>
+	</label>
+}

@@ -1,0 +1,96 @@
+package web
+
+import "strconv"
+import "github.com/jayzone91/mail-archive/internal/accounts"
+import "github.com/jayzone91/mail-archive/internal/restore"
+
+templ restoreView(sources []restoreChoice, targets []accounts.Account, jobs []restore.Job, req restore.Request, count int, note string) {
+	<form class="panel" action="/restore" method="post">
+		if note != "" {
+			<p class="alert" role="alert">{ note }</p>
+		}
+		<label>
+			Archivquelle
+			<select name="source" required>
+				<option value="">Quelle wählen</option>
+				if req.Source.Kind == "message" {
+					<option value={ "message:" + req.Source.ID } selected>Nachricht { req.Source.ID }</option>
+				}
+				if req.Source.Kind == "messages" {
+					<option value={ "messages:" + req.Source.ID } selected>Ausgewählte Archivnachrichten</option>
+				}
+				for _, source := range sources {
+					<option value={ source.ID } selected?={ source.ID == req.Source.Kind + ":" + req.Source.ID }>{ source.Label }</option>
+				}
+			</select>
+		</label>
+		<label>
+			Zielpostfach
+			<select name="target" required>
+				<option value="">Ziel wählen</option>
+				for _, target := range targets {
+					<option value={ target.ID } selected?={ req.Target == target.ID }>{ target.Name } · { target.Host }</option>
+				}
+			</select>
+		</label>
+		<label>Alternativer Zielordner <input name="folder" value={ req.Folder } placeholder="Originalordner verwenden"/></label>
+		<label>Originaldatum erhalten <input type="checkbox" name="date" checked?={ req.PreserveDate }/></label>
+		<label>Unterstützte Flags erhalten <input type="checkbox" name="flags" checked?={ req.PreserveFlags }/></label>
+		<button name="action" value="preview">Wiederherstellung simulieren</button>
+		if count > 0 {
+			<p role="status">{ strconv.Itoa(count) } Nachrichten ausgewählt. Die Simulation hat keine IMAP-Verbindung aufgebaut.</p>
+			<button name="action" value="queue">Wiederherstellung starten</button>
+		}
+	</form>
+	@jobMonitor("Wiederherstellungsaufträge", "/restore/status", "/restore", restoreJobs(jobs))
+}
+
+templ restoreJobs(jobs []restore.Job) {
+	<div data-active-jobs={ strconv.FormatBool(activeRestoreJobs(jobs)) }>
+		if len(jobs) > 0 {
+			<ul class="job-items">
+				for _, job := range jobs {
+					<li>
+						<strong>{ job.Target }</strong>
+						@jobBadge(job.Status)
+						<span class="job-count">{ strconv.Itoa(job.Verified) } / { strconv.Itoa(job.Total) } verifiziert</span>
+						@jobTimestamps(job.CreatedAt, job.StartedAt, job.FinishedAt)
+						if job.Total > 0 && job.Status=="running" {
+							<progress aria-label="Verifizierte Nachrichten" value={ strconv.Itoa(job.Verified) } max={ strconv.Itoa(job.Total) }></progress>
+						}
+						if job.Status == "failed" {
+							<a href={ templ.SafeURL("/restore/" + strconv.FormatInt(job.ID, 10)) }>Offene Nachrichten</a>
+							<form method="post" action={ templ.SafeURL("/restore/" + strconv.FormatInt(job.ID, 10) + "/retry") }>
+								<button type="submit">Auftrag erneut prüfen und fortsetzen</button>
+							</form>
+						}
+					</li>
+				}
+			</ul>
+		} else {
+			<p>Es wurden noch keine Wiederherstellungen gestartet.</p>
+		}
+	</div>
+}
+
+func activeRestoreJobs(jobs []restore.Job) bool {
+	for _, job := range jobs {
+		if job.Status == "running" || job.Status == "queued" {
+			return true
+		}
+	}
+	return false
+}
+
+templ restoreIssuesView(items []restore.Issue) {
+	if len(items) == 0 {
+		<p>Keine Einzelfehler gespeichert. Verbindungsfehler stehen im Anwendungsprotokoll.</p>
+	} else {
+		<ul>
+			for _, item := range items {
+				<li><a href={ templ.SafeURL(archiveURL(item.MessageID)) }>Nachricht { strconv.FormatInt(item.MessageID, 10) }</a> · { item.Folder } · { item.Detail }</li>
+			}
+		</ul>
+	}
+	<a href="/restore">Zur Wiederherstellung</a>
+}

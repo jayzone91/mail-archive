@@ -1,0 +1,70 @@
+package web
+
+import "strconv"
+import "net/url"
+import "github.com/jayzone91/mail-archive/internal/accounts"
+import "github.com/jayzone91/mail-archive/internal/migration"
+
+templ migrationView(mappings []migration.Mapping, targets []accounts.Account) {
+	<p>Vor dem Domaintransfer alle Quellpostfächer vollständig sichern, den Stand auf einem unabhängigen Ziel prüfen und einen Test-Restore durchführen. Der Domaintransfer erfolgt beim Anbieter.</p>
+	<p>Die Übersicht verwendet gespeicherte Prüfergebnisse. Für einen aktuellen Stand den Quellabgleich, den Snapshot und die Zielprüfung erneut durchführen.</p>
+	if len(mappings) == 0 {
+		<p>Es sind noch keine Quellpostfächer eingerichtet.</p>
+	}
+	for _, mapping := range mappings {
+		<section class="panel">
+			<h2>{ mapping.SourceName }</h2>
+			<p>{ mapping.SourceHost } · { strconv.Itoa(mapping.Archived) } Archiveinträge</p>
+			<h3>Quellbestand</h3>
+			if mapping.LastFull != "" {
+				<p>Letzte erfolgreiche Vollsicherung { mapping.LastFull } UTC</p>
+			} else {
+				<p>Eine erfolgreiche Vollsicherung ist noch offen.</p>
+			}
+			if mapping.LastSourceCheck != "" {
+				<p>Beim letzten IMAP-Abgleich { strconv.FormatInt(mapping.SourceCovered,10) } von { strconv.FormatInt(mapping.SourceSeen,10) } Nachrichten im Archiv bestätigt.</p>
+				@jobTimestamps("", "", mapping.LastSourceCheck)
+				if mapping.SourceCovered < mapping.SourceSeen {
+					<p class="alert">Die Quelle enthielt zum Ende des letzten Abgleichs noch Nachrichten, die in diesem Lauf nicht gesichert wurden. Starte eine weitere Sicherung.</p>
+				}
+			} else {
+				<p>Ein Sicherungslauf mit protokolliertem IMAP-Bestandsabgleich steht noch aus.</p>
+			}
+			<h3>Zweitsicherung</h3>
+			if mapping.LastSnapshot != "" {
+				<p>{ strconv.FormatInt(mapping.SnapshotCovered,10) } von { strconv.Itoa(mapping.Archived) } Archiveinträgen im letzten geprüften Snapshot auf <code>{ mapping.SnapshotTarget }</code>.</p>
+				@jobTimestamps("", "", mapping.LastSnapshot)
+			} else {
+				<p>Eine inhaltlich geprüfte Zweitsicherung ist noch offen.</p>
+			}
+			<h3>Zielpostfach</h3>
+			<form action="/migration" method="post">
+				<input type="hidden" name="source" value={ mapping.Source }/>
+				<label>
+					Zielpostfach
+					<select name="target" required>
+						<option value="">Ziel wählen</option>
+						for _, target := range targets {
+							if target.ID != mapping.Source {
+								<option value={ target.ID } selected?={ target.ID == mapping.Target }>{ target.Name } · { target.Host }</option>
+							}
+						}
+					</select>
+				</label>
+				<button type="submit">Zielzuordnung speichern</button>
+			</form>
+			if mapping.Target != "" {
+				<a href={ templ.SafeURL("/restore?kind=account&source=" + url.QueryEscape(mapping.Source) + "&target=" + url.QueryEscape(mapping.Target)) }>Restore für { mapping.TargetName } vorbereiten</a>
+			}
+			if mapping.RestoreID > 0 {
+				<p>Zielstatus { backupStatus(mapping.RestoreStatus) } · { strconv.Itoa(mapping.Verified) } von { strconv.Itoa(mapping.Planned) } Nachrichten bytegenau geprüft</p>
+				@jobTimestamps("", "", mapping.TargetCheckedAt)
+				if mapping.RestoreStatus == "failed" {
+					<a href={ templ.SafeURL("/restore/" + strconv.FormatInt(mapping.RestoreID, 10)) }>Offene Nachrichten ansehen</a>
+				}
+			} else if mapping.Target != "" {
+				<p>Für den aktuellen Archivbestand liegt noch kein Zielabgleich vor.</p>
+			}
+		</section>
+	}
+}

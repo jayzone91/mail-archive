@@ -1,0 +1,114 @@
+package web
+
+import "github.com/jayzone91/mail-archive/internal/snapshot"
+import "strconv"
+
+templ snapshotsView(target string, jobs []snapshot.Job, coverage snapshot.Coverage) {
+	<section class="panel">
+		<h2>Automatische Zweitsicherung</h2>
+		if target != "" {
+			<p>Aktiv · <code>{ target }</code></p>
+		} else {
+			<p>Deaktiviert</p>
+		}
+		<form method="post" action="/snapshots/automatic">
+			<label>Zielverzeichnis <input name="target" value={ target } required/></label>
+			<label><input type="checkbox" name="independent" required/> Das Ziel liegt auf einem unabhängigen Datenträger oder NAS.</label>
+			<div class="archive-actions">
+				<button class="button-filled" type="submit" name="action" value="enable">Automatisches Ziel speichern</button>
+				if target != "" {
+					<button type="submit" name="action" value="disable" formnovalidate>Automatik deaktivieren</button>
+				}
+			</div>
+		</form>
+	</section>
+	<form class="panel" method="post" action="/snapshots">
+		<h2>Manueller Snapshot</h2>
+		<label>
+			Zielverzeichnis auf einem separaten Datenträger oder NAS
+			if target != "" {
+				<input name="target" required value={ target }/>
+			} else if len(jobs) > 0 {
+				<input name="target" required value={ jobs[0].Target }/>
+			} else {
+				<input name="target" required/>
+			}
+		</label>
+		<button type="submit">Snapshot erstellen</button>
+	</form>
+	@jobMonitor("Abdeckung und Snapshot-Aufträge", "/snapshots/status", "/snapshots", snapshotJobs(jobs, coverage))
+	@portableExportForm(jobs)
+}
+
+templ portableExportForm(jobs []snapshot.Job) {
+	<form class="panel" method="post" action="/snapshots/export">
+		<h2>Sicherungspaket für Hardwarewechsel</h2>
+		<p>Das Paket enthält Datenbank, Einstellungen und Adminzugang. Für den Import brauchst du zusätzlich den ausgewählten EML-Snapshot.</p>
+		<label>
+			Verifizierter Snapshot
+			<select name="snapshot" required>
+				<option value="">Snapshot auswählen</option>
+				for _,job := range jobs {
+					if job.Status=="verified" {
+						<option value={ job.ID }>{ job.FinishedAt } UTC · { job.Target } · { job.ID }</option>
+					}
+				}
+			</select>
+		</label>
+		<label>Sicherungspasswort <input name="password" type="password" autocomplete="new-password" minlength={ strconv.Itoa(snapshot.PortablePasswordMin) } required/></label>
+		<label>Sicherungspasswort bestätigen <input name="password_confirm" type="password" autocomplete="new-password" required/></label>
+		<button class="button-filled" type="submit">Verschlüsseltes Paket herunterladen</button>
+	</form>
+}
+
+templ snapshotJobs(jobs []snapshot.Job, coverage snapshot.Coverage) {
+	<div data-active-jobs={ strconv.FormatBool(activeSnapshotJobs(jobs)) }>
+		if coverage.ID != "" {
+			<p>Letzter geprüfter Snapshot für diese Abdeckung: <code>{ coverage.Target }</code></p>
+			@jobTimestamps("", "", coverage.VerifiedAt)
+		} else {
+			<p>Für dieses Ziel liegt noch kein verifizierter Snapshot mit erfasster Archivabdeckung vor.</p>
+		}
+		if len(coverage.Mailboxes) > 0 {
+			<ul class="job-items" aria-label="Archivabdeckung pro Postfach">
+				for _, mailbox := range coverage.Mailboxes {
+					<li>
+						<strong>{ mailbox.Account }</strong>
+						<span class="job-count">{ mailbox.Email } · { mailbox.Host }</span>
+						<span>{ strconv.FormatInt(mailbox.Covered,10) } von { strconv.FormatInt(mailbox.Total,10) } Nachrichten abgedeckt</span>
+					</li>
+				}
+			</ul>
+		}
+		if len(jobs) > 0 {
+			<h3>Snapshot-Verlauf</h3>
+			<ul class="job-items">
+				for _, job := range jobs {
+					<li>
+						<strong>{ job.Target }</strong>
+						if job.Automatic {
+							<span class="job-count">Automatisch</span>
+						}
+						<span>{ snapshotStatus(job.Status) }</span>
+						if job.Status == "verified" {
+							<span class="job-count">{ strconv.FormatInt(job.Objects,10) } EML-Dateien</span>
+						}
+						@jobTimestamps("", "", job.FinishedAt)
+						if job.Error != "" {
+							<p class="alert">{ job.Error }</p>
+						}
+					</li>
+				}
+			</ul>
+		}
+	</div>
+}
+
+func activeSnapshotJobs(jobs []snapshot.Job) bool {
+	for _, job := range jobs {
+		if job.Status == "queued" || job.Status == "running" {
+			return true
+		}
+	}
+	return false
+}

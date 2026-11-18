@@ -1,0 +1,11 @@
+{
+  "name": "mailarchive",
+  "private": true,
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "sass": "1.108.2",
+    "typescript": "7.0.2"
+  }
+}

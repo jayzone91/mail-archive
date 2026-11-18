@@ -1,0 +1,14 @@
+[Unit]
+Description=MailArchive
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/mailarchive
+Restart=on-failure
+RestartSec=5s
+UMask=0077
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=graphical-session.target

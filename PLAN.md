@@ -2,9 +2,61 @@
 
 ## Umsetzungsrahmen
 
-MailArchive ist eine lokale E-Mail-Archivierung mit eigener Weboberfläche. MailStore Server dient als funktionale Referenz. Der erste produktive Einsatz ist der Umzug von rund 15 IMAP-Postfächern von Strato zu All-Inkl. Danach übernimmt MailArchive die laufende Sicherung, Suche und Wiederherstellung. Die Grundversion wird vor dem ersten produktiven Einsatz vollständig abgenommen. Die Erweiterungen in Abschnitt 20 beginnen erst danach.
+MailArchive ist eine lokale E-Mail-Archivierung mit eigener Weboberfläche. MailStore Server dient als funktionale Referenz. Der erste produktive Einsatz ist der Umzug von rund 15 IMAP-Postfächern von Strato zu All-Inkl. Danach übernimmt MailArchive die laufende Sicherung, Suche und Wiederherstellung. Die Grundversion umfasst auch die Sicherung von Exchange Server und Exchange Online gemäß Abschnitt 20 und wird vor dem ersten produktiven Einsatz vollständig abgenommen. Die späteren Erweiterungen in Abschnitt 21 beginnen erst danach.
 
 Beim Planungsstand auf `main` enthielt das Repository nur `PLAN.md` und `.gitattributes`. `just` ist im PATH verfügbar. Go und Bun sind über mise installiert und wurden außerhalb der Sandbox mit `mise exec -- go version` und `mise exec -- bun --version` geprüft. Go- und Bun-Befehle über `mise exec -- …` mit der vorgesehenen Sandbox-Freigabe ausführen, einschließlich der `just`-Aufgaben, die diese Werkzeuge aufrufen. In Phase 1 die Tool-Versionen im Projekt festlegen und reproduzierbare Produktionsbuilds für Windows und Linux einrichten.
+
+## Fortschritt
+
+Die Checkboxen zeigen den Projektstand. Ein Haken bedeutet, dass die konkret genannte Funktion umgesetzt oder die genannte Prüfung bestanden ist. Eine implementierte Teilfunktion kann abgehakt sein, während die Abnahme der zugehörigen Phase noch offen ist. Nach jeder Umsetzung die betroffenen Punkte hier und in der [Definition of Done](#17-definition-of-done) aktualisieren.
+
+**Nächster Umsetzungsschritt:** Regelmäßige Datenbank- und Archivintegritätsprüfungen ergänzen. Die praktischen Abnahmen sind gesammelt offen.
+
+### IMAP, Archiv und Wiederherstellung
+
+- [x] Go-Anwendung mit SQLite-Migrationen, Admin-Ersteinrichtung und lokaler Oberfläche aufgesetzt.
+- [x] Windows- und Linux-Produktionsbuilds erzeugt und Windows-Start lokal geprüft.
+- [x] IMAP-Postfachverwaltung mit verschlüsselten Zugangsdaten, TLS-Verbindungstest und Ordnerabruf umgesetzt.
+- [x] Vollständige und inkrementelle IMAP-Sicherung mit verifizierten EML-Originalen und wiederaufnehmbaren Aufträgen umgesetzt.
+- [x] Praxistest bestanden. Zwei Postfächer mit rund 250 E-Mails gesichert und die Nachrichten im Archiv angezeigt.
+- [x] Archivansicht mit Postfachauswahl, Ordnerbaum, Volltextsuche, Text- und HTML-Ansicht sowie Downloads umgesetzt.
+- [x] IMAP-Wiederherstellung für Nachrichten, Ordner und ganze Postfächer mit Vorschau, Journal und Zielprüfung umgesetzt.
+- [x] Praxistest bestanden. 297 E-Mails in ein anderes Postfach wiederhergestellt und beim erneuten Restore keine Duplikate erzeugt.
+- [ ] Leere IMAP-Ordner beim Restore wieder anlegen und den vollständigen Ordnerbaum im Ziel prüfen.
+
+### Zweitsicherung, Hardwarewechsel und Migration
+
+- [x] Manuellen Snapshot mit SQLite-Abbild, EML-Dateien und geprüftem Manifest umgesetzt.
+- [x] Migrationsübersicht mit Quell-/Zielzuordnung und Restore-Status umgesetzt.
+- [x] Zweitsicherungen nach erfolgreichen Backups automatisch einplanen und die Abdeckung des letzten verifizierten Snapshots je Postfach anzeigen. Folgesnapshot, Wiederholung und Teilabdeckung sind mit synthetischen Daten getestet.
+- [x] Verschlüsseltes Paket für SQLite, Einstellungen und Adminzugang in der Admin-Oberfläche exportieren und per Kommandozeile mit dem passenden EML-Snapshot in ein neues Datenverzeichnis importieren.
+- [ ] Wiederherstellung aus Paket und passendem EML-Snapshot auf einem Ersatzrechner ohne Zugriff auf das Altsystem abnehmen.
+- [x] Je Postfach Abschlussbestand des letzten protokollierten IMAP-Abgleichs, Abdeckung des letzten verifizierten Snapshots und geprüfte Nachrichten des Zielauftrags gegenüberstellen.
+- [ ] Strato → All-Inkl mit vollständigem Abschlussabgleich und Test-Restore vor dem produktiven Domaintransfer abnehmen.
+
+### Automatisierung, Wartung und Retention
+
+- [x] Zeitgesteuerte Backups, persistente Wiederholungsversuche, parallele Worker und Live-Status umgesetzt.
+- [x] Windows-Aufgabenplanung und Linux-systemd als Startoptionen vorbereitet.
+- [x] Aufbewahrungsvorschau anhand lokaler IMAP-Metadaten und der Restore-Schutzfrist umgesetzt.
+- [ ] Zeitfenster für Hintergrundaufgaben und regelmäßige Datenbank- und Archivintegritätsprüfungen ergänzen.
+- [ ] Löschvorschau gegen den aktuellen Serverbestand und die unabhängige Zweitsicherung verifizieren.
+- [ ] Gezielte serverseitige Bereinigung mit `UID EXPUNGE`, Freigabe je Konto und Löschhistorie umsetzen und mit isolierten Postfächern abnehmen.
+- [ ] Nativen Linux-Lauf, Autostart auf beiden Plattformen und Wiederaufnahme nach simuliertem Absturz abnehmen.
+
+### Exchange und erster Release
+
+- [ ] Exchange Server On-Premises mit zentralem Admin- oder Dienstkonto und selektiver Postfachsicherung umsetzen und abnehmen.
+- [ ] Exchange Online mit zentraler Entra-ID-App und selektiver Postfachsicherung umsetzen und abnehmen.
+- [ ] Funktionsabnahme der Grundversion abschließen. Erst danach Installer, Release-Automatisierung und Updates angehen.
+- [ ] Windows-Installer mit Admin-Ersteinrichtung und Import für Hardwarewechsel umsetzen und testen.
+- [ ] Signierte Releases und verifizierten Update- und Rollback-Ablauf für Windows und Linux abnehmen.
+
+### Späterer Ausbau
+
+- [ ] Archivverschlüsselung, eigenständige und unveränderbare Archivbestände sowie datenschutzgerechte Verwaltung umsetzen.
+- [ ] Lokale Benutzerverwaltung mit Lese- und Wiederherstellungsrechten je Archiv umsetzen.
+- [ ] Admin-Client mit dem Server ausliefern und separaten Benutzer-Client für Windows und Linux abnehmen.
 
 ## 1. Projektauftrag
 
@@ -797,6 +849,16 @@ Eine bloße zweite Kopie auf demselben Datenträger genügt nicht.
 
 Die serverseitige Bereinigung muss auf eine bereits erfolgreich verifizierte zweite Kopie der jeweiligen Nachricht angewiesen sein.
 
+### 11.1 Sicherung und Wiederherstellung für einen Hardwarewechsel
+
+In der Administrationsoberfläche ein portables Sicherungspaket erstellen, das ein konsistentes SQLite-Abbild, sämtliche Anwendungseinstellungen, Postfachkonfigurationen und das Administratorkonto einschließlich Passwort-Hash enthält. Sobald die Benutzerverwaltung verfügbar ist, gehören auch Benutzerkonten und ihre Postfachberechtigungen dazu. Das Paket mit einem vom Administrator vergebenen Sicherungspasswort verschlüsseln und bei der Erstellung auf Integrität prüfen. Laufende Anmeldesitzungen und Einmalcodes werden bei einem Umzug verworfen.
+
+Für einen vollständigen Umzug das Paket mit einer verifizierten Zweitsicherung der EML-Dateien desselben Datenstands wiederherstellen. Das Paket muss den benötigten Archivbestand eindeutig ausweisen. Auf dem Zielrechner Archiv- und Zweitsicherungspfade neu zuordnen sowie die Lesbarkeit und Prüfsummen prüfen, bevor automatisierte Jobs wieder freigegeben werden.
+
+Die Wiederherstellung muss auf einer frischen Installation vor der Anlage eines neuen Administratorkontos möglich sein. Nach erfolgreichem Import kann sich der vorhandene Administrator mit seinem bisherigen Passwort anmelden. An das alte Gerät oder Ausführungskonto gebundene IMAP-Zugangsdaten als neu einzurichten kennzeichnen. Den Status je Postfach anzeigen und die Verbindung nach Neueingabe der Zugangsdaten prüfen. Ein fehlgeschlagener Import darf eine bestehende Installation nicht überschreiben.
+
+**Abnahme:** Auf einem Ersatzrechner ohne Zugriff auf das alte System das Sicherungspaket und den zugehörigen EML-Bestand einspielen, sich als bisheriger Administrator anmelden, Einstellungen und Postfachzuordnungen prüfen und archivierte Nachrichten öffnen. Zusätzlich prüfen, dass ein falsches Sicherungspasswort oder ein beschädigtes Paket keine vorhandenen Daten verändert.
+
 ---
 
 ## 12. Scheduler und Betriebssystem-Integration
@@ -1066,6 +1128,10 @@ Die nach Phase 3 abgenommene Zweitsicherung in den Löschpfad integrieren. Imple
 
 **Abnahme:** Ausschließlich eindeutig identifizierte, überprüfte und unabhängig gesicherte Nachrichten werden serverseitig gelöscht.
 
+### Zwischenabnahme vor Phase 9 – Exchange-Sicherung
+
+Die Sicherung von Exchange On-Premises und Exchange Online gemäß Abschnitt 20 implementieren und mit einer separaten Exchange-Testinstallation sowie einem Microsoft-365-Testmandanten abnehmen. Erst danach Installer, Release-Automatisierung und Updates angehen.
+
 ### Phase 9 – Produktionsreife
 
 Implementieren und prüfen:
@@ -1163,11 +1229,11 @@ Das Projekt gilt als funktional abgeschlossen, wenn:
 - [ ] Zugangsdaten sicher verschlüsselt gespeichert werden.
 - [ ] Alle Ordner und Nachrichten vollständig archiviert werden.
 - [ ] Inkrementelle Sicherungen zuverlässig funktionieren.
-- [ ] Das Archiv unabhängig vom Mailserver lesbar ist.
+- [x] Das Archiv unabhängig vom Mailserver lesbar ist.
 - [ ] E-Mails inklusive Anhängen angezeigt werden.
-- [ ] Volltextsuche funktioniert.
-- [ ] Einzelne Nachrichten wiederhergestellt werden können.
-- [ ] Ganze Postfächer auf einen anderen IMAP-Server wiederhergestellt werden können.
+- [x] Volltextsuche funktioniert.
+- [x] Einzelne Nachrichten wiederhergestellt werden können.
+- [x] Ganze Postfächer auf einen anderen IMAP-Server wiederhergestellt werden können.
 - [ ] Automatische Sicherungen funktionieren.
 - [ ] Automatische Bereinigung nach zwei Monaten funktioniert.
 - [ ] Keine Nachricht ohne verifiziertes Archiv und Zweitsicherung gelöscht wird.
@@ -1176,7 +1242,7 @@ Das Projekt gilt als funktional abgeschlossen, wenn:
 - [ ] Sämtliche Konfigurationsmöglichkeiten über die Weboberfläche erreichbar sind.
 - [ ] Alle automatisierten Tests erfolgreich durchlaufen.
 - [ ] Die Windows- und Linux-Binärdateien ohne separate Entwicklungswerkzeuge betrieben werden können.
-- [ ] Windows- und Linux-Produktionsbuilds reproduzierbar über das `justfile` erstellt werden können.
+- [x] Windows- und Linux-Produktionsbuilds reproduzierbar über das `justfile` erstellt werden können.
 - [ ] Betriebssystemspezifische Funktionen ausschließlich über getestete Plattformadapter angesprochen werden.
 - [ ] Freigegebene Versionen als nachvollziehbare GitHub Releases für Windows und Linux veröffentlicht werden können.
 - [ ] Die Anwendung Updates sicher erkennen, anbieten, verifizieren, installieren und bei Fehlern zurückrollen kann.
@@ -1219,9 +1285,12 @@ Bestehende funktionierende Implementierungen erhalten und Änderungen so klein w
 
 ## 19. GitHub Releases und Anwendungsupdates
 
+Die Entwicklung von Installer, Release-Automatisierung und Update-Funktion beginnt erst, wenn alle Funktionen der Grundversion umgesetzt und funktional abgenommen sind. Dazu gehören der verifizierte Hardwarewechsel, die automatische Zweitsicherung, die sichere serverseitige Bereinigung und die Sicherung von Exchange On-Premises und Exchange Online gemäß Abschnitt 20. Die späteren Erweiterungen sind in Abschnitt 21 separat geplant.
+
 Nach bestandener Gesamtabnahme stabile Versionen als GitHub Releases veröffentlichen. Releases entstehen ausschließlich aus versionierten Git-Tags und enthalten mindestens:
 
 - Windows- und Linux-Artefakte je unterstützter Architektur
+- Signiertes Windows-Installationspaket je unterstützter Windows-Architektur gemäß Abschnitt 19.4
 - Versionsnummer nach Semantic Versioning
 - verständliche Release Notes und Hinweise auf inkompatible Änderungen
 - SHA-256-Prüfsummen aller Artefakte
@@ -1255,12 +1324,32 @@ Datenbankmigrationen müssen versioniert, vorwärtskompatibel geplant und vor de
 
 Schlagen Installation, Migration, Neustart oder Health-Check fehl, automatisch auf die vorherige Version zurückrollen, sofern keine irreversible Datenmigration erfolgt ist. Irreversible Migrationen erfordern vorab eine deutlich sichtbare Bestätigung und ein dokumentiertes Wiederherstellungsverfahren. Updateprüfung, Zustimmung, Download, Verifikation, Installation, Neustart und Rollback revisionssicher protokollieren, ohne Zugangsdaten oder andere Geheimnisse zu erfassen.
 
+### 19.4 Windows-Installer und Administratorkonto
+
+Bei einer Neuinstallation fragt der Windows-Installer das Administrationspasswort mit verdeckter Eingabe und Bestätigung ab. Er initialisiert die SQLite-Datenbank im Datenverzeichnis des vorgesehenen Windows-Ausführungskontos, führt die regulären Datenbankmigrationen aus und legt das erste lokale Administratorkonto an. Beim ersten Start ist die Anmeldung direkt mit dem gewählten Passwort möglich.
+
+Die Initialisierung verwendet dieselbe Passwortvalidierung und Passwort-Hashing-Logik wie die Anwendung. Das Passwort darf weder in Klartext gespeichert noch über Kommandozeilenargumente, Installationsprotokolle oder temporäre Dateien weitergegeben werden. Datenbankschema und Adminzugang müssen in einem konsistenten Zustand hinterlassen werden. Updates und Reparaturinstallationen erkennen vorhandene Datenbanken und Administratorkonten und überspringen die Passwortabfrage und Kontoanlage.
+
+Die Release-Abnahme prüft die Neuinstallation mit anschließender Anmeldung, einen Abbruch während der Einrichtung und ein Upgrade, bei dem das bestehende Administratorkonto und Archiv erhalten bleiben.
+
+Bei einer Neuinstallation für einen Hardwarewechsel die Wiederherstellung aus einem vorhandenen Sicherungspaket gemäß Abschnitt 11.1 anbieten. Die Einrichtung eines neuen Administratorkontos erfolgt beim regulären Neuinstallationspfad.
+
 ---
 
-## 20. Spätere Ausbaustufe nach Abnahme der Grundversion
+## 20. Exchange-Sicherung als Teil der Grundversion
 
 1. **Exchange On-Premises.** Einen Connector für vollständige und inkrementelle Postfachsicherungen in das lokale Archiv entwickeln. Exchange-Administratoren richten einmal pro Organisation einen zentralen Zugang ein. MailArchive authentifiziert sich mit einem entsprechend berechtigten Administratorkonto oder einem vom Administrator eingerichteten Dienstkonto und ermittelt darüber die verfügbaren Postfächer. In der Weboberfläche lassen sich einzelne, mehrere oder alle verfügbaren Postfächer für die Sicherung auswählen. Die Sicherung läuft über den zentralen Zugang ohne Passwörter der Postfachinhaber. Unterstützte Exchange-Versionen, Postfachtypen und die nötigen Berechtigungen für Postfachermittlung und Sicherung in dieser Ausbaustufe festlegen. In einer separaten Exchange-Installation prüfen, dass nur ausgewählte Postfächer archiviert werden und entzogene Rechte als Fehler sichtbar sind. [Microsoft-Dokumentation zu EWS-Impersonation](https://learn.microsoft.com/exchange/client-developer/exchange-web-services/impersonation-and-ews-in-exchange)
 2. **Exchange Online und Microsoft 365.** Einen Connector mit zentral registrierter Microsoft-Entra-ID-Anwendung (Azure-App) pro Mandant entwickeln. Ein Mandantenadministrator erteilt einmalig die erforderlichen Anwendungsberechtigungen für die Postfachermittlung und den lesenden Zugriff über Microsoft Graph. MailArchive nutzt OAuth 2.0 Client Credentials für unbeaufsichtigte Voll- und inkrementelle Sicherungen ohne Anmeldung oder OAuth-Freigabe durch einzelne Postfachinhaber. Bei mandantenweiter Berechtigung stehen alle unterstützten Postfächer zur Auswahl. Im Browser lassen sich einzelne, mehrere oder alle verfügbaren Postfächer für die Sicherung auswählen. Die Auswahl steuert den Sicherungsumfang. Eine zusätzliche serverseitige Eingrenzung des App-Zugriffs über Exchange Online Application RBAC soll unterstützt werden. In einem separaten Testmandanten Listenabruf, selektive Sicherung ohne Benutzeranmeldung und die Behandlung fehlender Berechtigungen prüfen. Die archivierten Nachrichten bleiben lokal durchsuchbar. [Microsoft-Dokumentation zu App-Berechtigungen in Exchange Online](https://learn.microsoft.com/en-us/exchange/permissions-exo/application-rbac)
-3. **Verschlüsselung archivierter Postfächer.** Archivdaten einschließlich Nachrichten, Metadaten, Suchindex und Zweitsicherungen verschlüsseln. Schlüsselverwaltung, Schlüsselwiederherstellung und die verifizierte Umstellung bestehender Archive vorsehen. Die Wiederherstellung auf einem Ersatzrechner mit gesichertem Schlüssel erproben.
-4. **Eigenständige und unveränderbare Archive.** Archivbestände mit Nachrichten, Metadaten und Integritätsnachweisen separat verwalten, exportieren und auf einem anderen Rechner wieder einbinden. Zusätzlich abgeschlossene Bestände für eine definierte Dauer gegen Änderung und Löschung schützen. Die Unveränderbarkeit auch auf der Speicherebene gegen das vereinbarte Bedrohungsmodell prüfen. Ein Integritätsnachweis macht nachträgliche Veränderungen erkennbar, während eine Speichersperre sie verhindern soll. [MailStore-Referenz für Archivspeicher](https://help.mailstore.com/en/server/index.php?title=Storage_Locations)
-5. **Datenschutzgerechte Archivierung.** Rollen und Zugriffsbeschränkungen je Archiv, nachvollziehbare Zugriffs- und Exportprotokolle, zweckgebundene Aufbewahrungsfristen, Löschsperren und Workflows für Auskunft und Löschung umsetzen. Vor der Umsetzung unveränderbarer Archive die Regeln für Fristablauf, Löschsperren und Zweitsicherungen gemeinsam festlegen. Die Abnahme umfasst dokumentierte Verarbeitungszwecke, Rechtsgrundlagen und Fristen für den konkreten Einsatz sowie Tests für Berechtigungen, Export und Löschung. [DSGVO auf EUR-Lex](https://eur-lex.europa.eu/eli/reg/2016/679/oj/eng/) · [MailStore-Referenz für Aufbewahrung und Löschsperren](https://help.mailstore.com/en/server/Compliance_General)
+**Abnahme:** In beiden Exchange-Umgebungen Postfächer über den zentralen Zugang ermitteln, eine Auswahl treffen und vollständig sowie inkrementell sichern. Die gesicherten Nachrichten müssen offline durchsuchbar sein. Prüfen, dass nicht ausgewählte Postfächer unberührt bleiben und fehlende oder entzogene Berechtigungen sichtbar gemeldet werden.
+
+---
+
+## 21. Spätere Ausbaustufe nach Abnahme der Grundversion
+
+1. **Verschlüsselung archivierter Postfächer.** Archivdaten einschließlich Nachrichten, Metadaten, Suchindex und Zweitsicherungen verschlüsseln. Schlüsselverwaltung, Schlüsselwiederherstellung und die verifizierte Umstellung bestehender Archive vorsehen. Die Wiederherstellung auf einem Ersatzrechner mit gesichertem Schlüssel erproben.
+2. **Eigenständige und unveränderbare Archive.** Archivbestände mit Nachrichten, Metadaten und Integritätsnachweisen separat verwalten, exportieren und auf einem anderen Rechner wieder einbinden. Zusätzlich abgeschlossene Bestände für eine definierte Dauer gegen Änderung und Löschung schützen. Die Unveränderbarkeit auch auf der Speicherebene gegen das vereinbarte Bedrohungsmodell prüfen. Ein Integritätsnachweis macht nachträgliche Veränderungen erkennbar, während eine Speichersperre sie verhindern soll. [MailStore-Referenz für Archivspeicher](https://help.mailstore.com/en/server/index.php?title=Storage_Locations)
+3. **Datenschutzgerechte Archivierung.** Rollen und Zugriffsbeschränkungen je Archiv, nachvollziehbare Zugriffs- und Exportprotokolle, zweckgebundene Aufbewahrungsfristen, Löschsperren und Workflows für Auskunft und Löschung umsetzen. Vor der Umsetzung unveränderbarer Archive die Regeln für Fristablauf, Löschsperren und Zweitsicherungen gemeinsam festlegen. Die Abnahme umfasst dokumentierte Verarbeitungszwecke, Rechtsgrundlagen und Fristen für den konkreten Einsatz sowie Tests für Berechtigungen, Export und Löschung. [DSGVO auf EUR-Lex](https://eur-lex.europa.eu/eli/reg/2016/679/oj/eng/) · [MailStore-Referenz für Aufbewahrung und Löschsperren](https://help.mailstore.com/en/server/Compliance_General)
+4. **Benutzer und Postfachberechtigungen.** Administratoren können im Admin-Client weitere lokale Benutzer anlegen, deaktivieren und ihnen je Postfach getrennt das Lesen und das Wiederherstellen erlauben. Das Leserecht umfasst Ordner, Suche, Nachrichtenansicht sowie EML- und Anhangdownloads. Bei einem Restore müssen sowohl der ausgewählte Archivbestand als auch das Zielpostfach für die jeweilige Aktion freigegeben sein. Rechte serverseitig für jeden Zugriff prüfen, auch bei direkten Links und Hintergrundaufträgen. Standardmäßig erhalten neue Benutzer keinen Zugriff auf Postfächer. Änderungen an Berechtigungen protokollieren und mit Tests für verweigerte Zugriffe, Suchtreffer, Downloads und Wiederherstellung abnehmen.
+5. **Admin-Client und Benutzer-Client für Windows und Linux.** Zwei getrennt ausgelieferte Desktop-Anwendungen öffnen die jeweils passende, vom MailArchive-Server ausgelieferte Oberfläche in einem nativen WebView-Fenster. Die Serverdistribution enthält den Admin-Client für Postfachverwaltung, Einstellungen, Aufträge und Benutzerfreigaben. Der separat installierbare Benutzer-Client verbindet sich mit einer konfigurierbaren Serveradresse und zeigt nach Anmeldung ausschließlich die freigegebenen Archive und erlaubten Aktionen an. Administrative Bereiche sind der Administratorrolle vorbehalten, auch bei direkten Anfragen aus dem Benutzer-Client.
+
+   Wails ist der bevorzugte Kandidat für beide Anwendungen. Vor der Umsetzung Laufzeitvoraussetzungen, Servernavigation und Downloads auf Windows und Linux erproben. Anmeldung, Sitzungsverwaltung und sämtliche Berechtigungsprüfungen liegen beim Server. Den Netzwerkzugriff ausdrücklich aktivieren und durch HTTPS mit Zertifikatsprüfung absichern. Die WebView auf die konfigurierte Server-Origin begrenzen. Die geladene Oberfläche erhält keine privilegierten nativen Client-Bindings. Für die Abnahme im Admin-Client ein Archiv freigeben, im Benutzer-Client die Sichtbarkeit und erlaubten Aktionen prüfen und anschließend den Entzug des Zugriffs auch über direkte Anfragen verifizieren.

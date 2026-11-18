@@ -1,0 +1,4 @@
+node_modules/
+dist/
+internal/web/assets/
+*_templ.go

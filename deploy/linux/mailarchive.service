@@ -1,0 +1,24 @@
+[Unit]
+Description=MailArchive
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=mailarchive
+Group=mailarchive
+StateDirectory=mailarchive
+StateDirectoryMode=0700
+ExecStart=/usr/local/bin/mailarchive -data-dir /var/lib/mailarchive
+LoadCredentialEncrypted=mailarchive.key:/etc/credstore.encrypted/mailarchive.key
+Restart=on-failure
+RestartSec=5s
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=strict
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target
