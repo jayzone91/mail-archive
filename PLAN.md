@@ -2,15 +2,15 @@
 
 ## Umsetzungsrahmen
 
-MailArchive ist eine lokale E-Mail-Archivierung mit eigener Weboberfläche. MailStore Server dient als funktionale Referenz. Der erste produktive Einsatz ist der Umzug von rund 15 IMAP-Postfächern von Strato zu All-Inkl. Danach übernimmt MailArchive die laufende Sicherung, Suche und Wiederherstellung. Die Grundversion wird vor dem ersten produktiven Einsatz vollständig abgenommen. Die Erweiterungen in Abschnitt 19 beginnen erst danach.
+MailArchive ist eine lokale E-Mail-Archivierung mit eigener Weboberfläche. MailStore Server dient als funktionale Referenz. Der erste produktive Einsatz ist der Umzug von rund 15 IMAP-Postfächern von Strato zu All-Inkl. Danach übernimmt MailArchive die laufende Sicherung, Suche und Wiederherstellung. Die Grundversion wird vor dem ersten produktiven Einsatz vollständig abgenommen. Die Erweiterungen in Abschnitt 20 beginnen erst danach.
 
-Beim Planungsstand auf `main` enthielt das Repository nur `PLAN.md` und `.gitattributes`. `just` ist im PATH verfügbar. Go und Bun sind über mise installiert und wurden außerhalb der Sandbox mit `mise exec -- go version` und `mise exec -- bun --version` geprüft. Go- und Bun-Befehle über `mise exec -- …` mit der vorgesehenen Sandbox-Freigabe ausführen, einschließlich der `just`-Aufgaben, die diese Werkzeuge aufrufen. In Phase 1 die Tool-Versionen im Projekt festlegen und den Windows-Produktionsbuild reproduzierbar machen.
+Beim Planungsstand auf `main` enthielt das Repository nur `PLAN.md` und `.gitattributes`. `just` ist im PATH verfügbar. Go und Bun sind über mise installiert und wurden außerhalb der Sandbox mit `mise exec -- go version` und `mise exec -- bun --version` geprüft. Go- und Bun-Befehle über `mise exec -- …` mit der vorgesehenen Sandbox-Freigabe ausführen, einschließlich der `just`-Aufgaben, die diese Werkzeuge aufrufen. In Phase 1 die Tool-Versionen im Projekt festlegen und reproduzierbare Produktionsbuilds für Windows und Linux einrichten.
 
 ## 1. Projektauftrag
 
 Entwickle eine vollständige, lokal betriebene E-Mail-Archivierungssoftware namens **MailArchive**.
 
-Die Anwendung soll unter Windows 11 laufen und mehrere IMAP-Postfächer verwalten.
+Die Anwendung soll unter Windows 11 sowie auf aktuellen Linux-Distributionen laufen und mehrere IMAP-Postfächer verwalten. Plattformunabhängige Fachlogik ist von klar abgegrenzten Betriebssystem-Adaptern zu trennen.
 
 ### Ausgangssituation
 
@@ -81,9 +81,9 @@ Entwicklungsgrundsätze:
 | Bundler                 | Bun                                 |
 | Interaktivität          | htmx, wo sinnvoll                   |
 | Build-Automatisierung   | just                                |
-| Zugangsdaten            | Windows DPAPI                       |
+| Zugangsdaten            | OS-Adapter: Windows DPAPI, Linux Secret Service beziehungsweise systemd-Credentials für Dienste |
 | Hintergrundverarbeitung | Go Worker                           |
-| Programmstart           | Windows-Aufgabenplanung             |
+| Programmstart           | OS-Adapter: Windows-Aufgabenplanung, Linux systemd |
 | E-Mail-Speicherung      | EML, unveränderte RFC-5322-Rohdaten |
 | Logging                 | `log/slog`                          |
 
@@ -163,9 +163,21 @@ Verarbeitet wiederkehrende Aufgaben innerhalb des laufenden Go-Prozesses.
 
 Aufgaben müssen nach Neustarts kontrolliert fortgeführt werden können.
 
-Der Windows-Aufgabenplaner startet die Anwendung beim Benutzerlogin beziehungsweise über eine dafür geeignete, explizit konfigurierte Windows-Aufgabe.
+Ein plattformspezifischer Start-Adapter integriert die Anwendung unter Windows in die Aufgabenplanung und unter Linux in systemd. Der Start erfolgt beim Benutzerlogin beziehungsweise über eine explizit konfigurierte Benutzer- oder Systemdiensteinheit.
 
-Für unbeaufsichtigten Betrieb ohne Benutzeranmeldung muss eine separate Betriebsart mit geeignetem Dienstkonto und geklärtem Zugriff auf verschlüsselte Zugangsdaten unterstützt werden.
+Für unbeaufsichtigten Betrieb ohne Benutzeranmeldung muss auf beiden Plattformen eine separate Betriebsart mit geeignetem Dienstkonto und geklärtem Zugriff auf verschlüsselte Zugangsdaten unterstützt werden.
+
+### 4.8 Plattformintegration
+
+Betriebssystemabhängige Funktionen hinter kleinen Go-Interfaces kapseln und über getrennte Implementierungen beziehungsweise Go-Build-Tags bereitstellen. Dazu gehören mindestens:
+
+- Verschlüsselung und Entschlüsselung von Zugangsdaten
+- Autostart, Dienstinstallation und Dienststatus
+- Ermittlung der Standardverzeichnisse für Konfiguration, Daten, Cache und Logs
+- Dateisystemberechtigungen und plattformspezifische Dateisperren
+- Signalbehandlung und sauberer Shutdown
+
+Die Fachmodule dürfen Windows- oder Linux-APIs nicht direkt aufrufen. Nicht unterstützte Plattformen müssen beim Build oder Start mit einer verständlichen Fehlermeldung abgewiesen werden. Windows- und Linux-Adapter erhalten jeweils eigene automatisierte Tests; betriebssystemspezifische Integrationstests laufen auf dem jeweiligen Zielsystem.
 
 ---
 
@@ -728,11 +740,11 @@ Bestehende Strato-Archive müssen dauerhaft erhalten bleiben.
 
 Alle IMAP-Passwörter verschlüsselt speichern.
 
-Unter Windows die Data Protection API verwenden.
+Unter Windows die Data Protection API verwenden. Unter Linux im interaktiven Desktopbetrieb den Secret Service über D-Bus verwenden. Für einen systemd-Systemdienst systemd-Credentials oder eine gleichwertige, dokumentierte Linux-native Schlüsselübergabe verwenden; Zugangsdaten niemals unverschlüsselt in Unit-Dateien, Umgebungsvariablen oder SQLite ablegen.
 
 Es darf niemals ein Klartextpasswort in SQLite, Logs oder HTTP-Antworten erscheinen.
 
-Der Verschlüsselungskontext muss zum tatsächlichen Windows-Ausführungskonto passen.
+Der Verschlüsselungskontext muss zum tatsächlichen Windows- beziehungsweise Linux-Ausführungskonto und zur gewählten Betriebsart passen.
 
 Änderungen des Dienstkontos dürfen nicht unbemerkt zum Verlust des Zugriffs auf gespeicherte Zugangsdaten führen.
 
@@ -757,7 +769,7 @@ Der Verschlüsselungskontext muss zum tatsächlichen Windows-Ausführungskonto p
 
 ### 10.4 Archiv
 
-Dateisystemberechtigungen so setzen, dass nur das vorgesehene Windows-Benutzerkonto und erforderliche Administratoren Zugriff erhalten.
+Dateisystemberechtigungen so setzen, dass nur das vorgesehene Ausführungskonto und erforderliche Administratoren Zugriff erhalten. Unter Windows geeignete ACLs, unter Linux restriktive Besitzer-/Gruppenrechte und standardmäßig `0700` für Verzeichnisse beziehungsweise `0600` für sensible Dateien verwenden.
 
 Bei unverschlüsseltem Archiv ausdrücklich berücksichtigen, dass EML-Dateien personenbezogene Daten enthalten.
 
@@ -787,7 +799,7 @@ Die serverseitige Bereinigung muss auf eine bereits erfolgreich verifizierte zwe
 
 ---
 
-## 12. Scheduler und Windows-Integration
+## 12. Scheduler und Betriebssystem-Integration
 
 ### Scheduler
 
@@ -821,6 +833,20 @@ Keine Administratorrechte für den normalen Betrieb voraussetzen.
 
 Für die Installation systemweiter Autostart-Mechanismen können erhöhte Berechtigungen erforderlich sein.
 
+### Linux
+
+Die Anwendung muss ohne offene Shell dauerhaft ausführbar sein.
+
+Folgende Optionen bereitstellen:
+
+- Manueller Start
+- Automatischer Start über eine systemd-User-Unit
+- Optional unbeaufsichtigter Betrieb über eine gehärtete systemd-System-Unit und ein eigenes Dienstkonto
+- Sauberer Shutdown über `SIGTERM` und `SIGINT`
+- Fortsetzung unterbrochener Jobs
+
+Die Unit-Dateien dürfen keine Zugangsdaten enthalten. Schreibzugriffe auf Archiv-, Daten- und Logverzeichnisse müssen explizit freigegeben sein. Für eine systemweite Installation können Root-Rechte erforderlich sein; der laufende Prozess selbst darf nicht als Root betrieben werden.
+
 ---
 
 ## 13. Projektstruktur
@@ -845,6 +871,9 @@ mailarchive/
 │   ├── restore/
 │   ├── retention/
 │   ├── scheduler/
+│   ├── platform/
+│   │   ├── windows/
+│   │   └── linux/
 │   ├── security/
 │   ├── search/
 │   ├── jobs/
@@ -889,11 +918,23 @@ Erforderliche Aufgaben:
 | `just clean`     | Builddateien entfernen |
 | `just run`       | Anwendung starten      |
 
+Zusätzliche plattformspezifische Aufgaben:
+
+| Befehl               | Funktion                                       |
+| -------------------- | ---------------------------------------------- |
+| `just build-windows` | Produktionsbuild für Windows (`windows/amd64`) |
+| `just build-linux`   | Produktionsbuild für Linux (`linux/amd64`)     |
+| `just build-all`     | Beide Produktionsbuilds erstellen             |
+| `just run-windows`   | Windows-Build auf Windows starten              |
+| `just run-linux`     | Linux-Build auf Linux starten                  |
+
+`just build` erstellt standardmäßig den Build für das aktuelle Hostsystem. Die Zielrezepte setzen `GOOS` und `GOARCH` explizit, schreiben in getrennte Verzeichnisse wie `dist/windows-amd64/` und `dist/linux-amd64/` und verwenden passende Dateinamen (`mailarchive.exe` beziehungsweise `mailarchive`). Frontend- und templ-Generierung müssen für beide Ziele identisch und nur einmal pro Buildlauf ausführbar sein. Plattformabhängige Go-Dateien über die Suffixe `_windows.go` und `_linux.go` oder präzise Build-Tags auswählen. Ein Cross-Build darf keine Zielsystem-Kommandos ausführen; plattformspezifische Integrationstests laufen nativ oder in einer CI-Matrix auf Windows und Linux.
+
 Frontend über Bun bündeln.
 
 templ-Templates im Build generieren.
 
-Produktionsausgabe möglichst als einzelne Go-EXE mit eingebetteten Frontend-Assets.
+Produktionsausgabe möglichst als einzelne Go-Binärdatei mit eingebetteten Frontend-Assets: EXE unter Windows und ausführbare ELF-Datei unter Linux. Plattformspezifische Unit- beziehungsweise Installationsdateien separat mit ausliefern.
 
 Laufzeitdaten und Archive außerhalb des Git-Repositories speichern.
 
@@ -917,7 +958,7 @@ Implementieren:
 - Einstellungen
 - Grundlegende Sicherheitsarchitektur
 
-**Abnahme:** Anwendung startet unter Windows und die Weboberfläche ist erreichbar.
+**Abnahme:** Anwendung startet unter Windows und Linux und die Weboberfläche ist auf beiden Plattformen erreichbar.
 
 ### Phase 2 – Postfachverwaltung
 
@@ -1006,7 +1047,7 @@ Implementieren:
 - Jobverwaltung
 - Fehlerbehandlung
 - Retry-Mechanismus
-- Windows-Autostart
+- Windows-Autostart und Linux-systemd-Integration
 - Persistente Jobzustände
 
 **Abnahme:** Backups laufen selbstständig und werden nach einem Neustart wieder aufgenommen.
@@ -1029,7 +1070,7 @@ Die nach Phase 3 abgenommene Zweitsicherung in den Löschpfad integrieren. Imple
 
 Implementieren und prüfen:
 
-- Windows-Build
+- Windows- und Linux-Build
 - Startverhalten
 - Ausfallsicherheit
 - Große Postfächer
@@ -1039,8 +1080,9 @@ Implementieren und prüfen:
 - Dokumentation
 - Installationsanleitung
 - Backup- und Restore-Notfallverfahren
+- Release- und Updatekonzept aus Abschnitt 19
 
-**Abnahme:** Anwendung arbeitet stabil und kann nach einem simulierten Windows-Absturz ohne Archivverlust fortfahren.
+**Abnahme:** Anwendung arbeitet unter Windows und Linux stabil und kann nach simuliertem Prozess- beziehungsweise Systemabsturz ohne Archivverlust fortfahren. Ein signierter Test-Release kann installiert, aktualisiert und bei einem fehlgeschlagenen Update sicher zurückgerollt werden.
 
 ---
 
@@ -1099,6 +1141,18 @@ Besonders wichtig:
 
 Destruktive Tests ausschließlich gegen isolierte Testpostfächer durchführen.
 
+### Updates
+
+- Neue, identische und ältere Version korrekt erkennen
+- Vorabversionen nur nach ausdrücklicher Aktivierung anbieten
+- Nicht erreichbares GitHub und API-Limits ohne Beeinträchtigung des laufenden Betriebs behandeln
+- Manipulierte Artefakte, Signaturen oder Prüfsummen ablehnen
+- Falsche Betriebssystem- oder Architekturartefakte ablehnen
+- Laufende Jobs vor der Installation kontrolliert beenden oder das Update verschieben
+- Datenbankmigration und Neustart erfolgreich durchführen
+- Fehlgeschlagenes Update auf die vorherige Binärdatei zurückrollen
+- Archiv- und Konfigurationsdaten bei Update und Rollback unverändert erhalten
+
 ---
 
 ## 17. Definition of Done
@@ -1118,10 +1172,14 @@ Das Projekt gilt als funktional abgeschlossen, wenn:
 - [ ] Automatische Bereinigung nach zwei Monaten funktioniert.
 - [ ] Keine Nachricht ohne verifiziertes Archiv und Zweitsicherung gelöscht wird.
 - [ ] Archivdaten nach einem Absturz konsistent bleiben.
-- [ ] Die Anwendung unter Windows automatisch startet.
+- [ ] Die Anwendung unter Windows und Linux automatisch startet.
 - [ ] Sämtliche Konfigurationsmöglichkeiten über die Weboberfläche erreichbar sind.
 - [ ] Alle automatisierten Tests erfolgreich durchlaufen.
-- [ ] Die Windows-Anwendung ohne separate Entwicklungswerkzeuge betrieben werden kann.
+- [ ] Die Windows- und Linux-Binärdateien ohne separate Entwicklungswerkzeuge betrieben werden können.
+- [ ] Windows- und Linux-Produktionsbuilds reproduzierbar über das `justfile` erstellt werden können.
+- [ ] Betriebssystemspezifische Funktionen ausschließlich über getestete Plattformadapter angesprochen werden.
+- [ ] Freigegebene Versionen als nachvollziehbare GitHub Releases für Windows und Linux veröffentlicht werden können.
+- [ ] Die Anwendung Updates sicher erkennen, anbieten, verifizieren, installieren und bei Fehlern zurückrollen kann.
 
 ---
 
@@ -1159,7 +1217,47 @@ Bestehende funktionierende Implementierungen erhalten und Änderungen so klein w
 
 ---
 
-## 19. Spätere Ausbaustufe nach Abnahme der Grundversion
+## 19. GitHub Releases und Anwendungsupdates
+
+Nach bestandener Gesamtabnahme stabile Versionen als GitHub Releases veröffentlichen. Releases entstehen ausschließlich aus versionierten Git-Tags und enthalten mindestens:
+
+- Windows- und Linux-Artefakte je unterstützter Architektur
+- Versionsnummer nach Semantic Versioning
+- verständliche Release Notes und Hinweise auf inkompatible Änderungen
+- SHA-256-Prüfsummen aller Artefakte
+- kryptografisch signiertes Release-Manifest mit Version, Zielplattform, Architektur, Dateigröße, Downloadadresse und Prüfsumme
+- Installations-, Update- und gegebenenfalls Migrationshinweise
+
+Das `justfile` um reproduzierbare Aufgaben wie `just release-build`, `just release-checksums` und `just release-verify` ergänzen. Das Veröffentlichen eines GitHub Releases bleibt ein separater, ausdrücklich ausgelöster Schritt und darf nicht durch einen normalen Build erfolgen. Zugangstoken und Signaturschlüssel niemals im Repository oder in Buildartefakten speichern. Vor Veröffentlichung müssen Tests, plattformspezifische Builds und die Verifikation der erzeugten Artefakte erfolgreich sein.
+
+### 19.1 Updateprüfung
+
+Die Anwendung prüft in einem konfigurierbaren Intervall über die offizielle GitHub-Releases-Schnittstelle, ob eine neuere stabile Version verfügbar ist. Die Prüfung muss deaktivierbar sein und darf keine Postfach-, Archiv- oder personenbezogenen Daten übertragen. Vorabversionen werden standardmäßig ignoriert und nur über einen explizit gewählten Updatekanal berücksichtigt.
+
+Fehler bei Netzwerkzugriff, TLS, GitHub-Verfügbarkeit oder API-Limits dürfen den Archivbetrieb nicht beeinträchtigen. Die Weboberfläche zeigt aktuelle Version, verfügbare Version, Veröffentlichungsdatum, Release Notes, Downloadgröße und letzten Prüfstatus an. Zusätzlich muss eine manuelle Updateprüfung möglich sein.
+
+### 19.2 Download und Installation
+
+Updates niemals allein aufgrund einer Versionsangabe installieren. Vor der Installation müssen Release-Manifest, Signatur, Zielplattform, Architektur, Dateigröße und SHA-256-Prüfsumme erfolgreich verifiziert werden. Die Anwendung vertraut ausschließlich einem mitgelieferten öffentlichen Release-Schlüssel; ein über denselben Downloadkanal gelieferter Ersatzschlüssel darf nicht automatisch akzeptiert werden.
+
+Ein verfügbares Update zunächst nur anbieten. Download und Installation erfolgen nach ausdrücklicher Bestätigung eines Administrators. Eine vollständig automatische Installation kann später als standardmäßig deaktivierte Option ergänzt werden. Sicherheitsupdates dürfen deutlich gekennzeichnet, aber nicht ohne die konfigurierte Zustimmung installiert werden.
+
+Der plattformspezifische Update-Adapter übernimmt die Installation:
+
+- Unter Windows die neue Binärdatei beziehungsweise ein signiertes Installationspaket außerhalb des laufenden Prozesses austauschen und den Aufgabenplanungs- oder Dienststart berücksichtigen.
+- Unter Linux die neue Binärdatei beziehungsweise ein signiertes Paket mit dem vorgesehenen systemd-Dienst aktualisieren. Systemweite Installationen dürfen nur über einen eng begrenzten privilegierten Installationsschritt erfolgen; der normale Anwendungsprozess bleibt unprivilegiert.
+
+Vor dem Austausch keine neuen Jobs starten, laufende kritische Jobs kontrolliert abschließen oder das Update verschieben, Datenbank und Konfiguration konsistent sichern und anschließend sauber neu starten. Archivdaten niemals in das Programmverzeichnis legen oder im Rahmen eines Updates verändern.
+
+### 19.3 Migration, Rollback und Nachweis
+
+Datenbankmigrationen müssen versioniert, vorwärtskompatibel geplant und vor dem Binärdateiaustausch auf ihre Rollback-Auswirkungen geprüft werden. Vor jedem Update einen konsistenten Sicherungspunkt für Datenbank und Konfiguration erstellen. Die vorherige funktionierende Binärdatei und das verifizierte Release-Manifest bis zur erfolgreichen Abschlussprüfung aufbewahren.
+
+Schlagen Installation, Migration, Neustart oder Health-Check fehl, automatisch auf die vorherige Version zurückrollen, sofern keine irreversible Datenmigration erfolgt ist. Irreversible Migrationen erfordern vorab eine deutlich sichtbare Bestätigung und ein dokumentiertes Wiederherstellungsverfahren. Updateprüfung, Zustimmung, Download, Verifikation, Installation, Neustart und Rollback revisionssicher protokollieren, ohne Zugangsdaten oder andere Geheimnisse zu erfassen.
+
+---
+
+## 20. Spätere Ausbaustufe nach Abnahme der Grundversion
 
 1. **Exchange On-Premises.** Einen Connector für vollständige und inkrementelle Postfachsicherungen in das lokale Archiv entwickeln. Exchange-Administratoren richten einmal pro Organisation einen zentralen Zugang ein. MailArchive authentifiziert sich mit einem entsprechend berechtigten Administratorkonto oder einem vom Administrator eingerichteten Dienstkonto und ermittelt darüber die verfügbaren Postfächer. In der Weboberfläche lassen sich einzelne, mehrere oder alle verfügbaren Postfächer für die Sicherung auswählen. Die Sicherung läuft über den zentralen Zugang ohne Passwörter der Postfachinhaber. Unterstützte Exchange-Versionen, Postfachtypen und die nötigen Berechtigungen für Postfachermittlung und Sicherung in dieser Ausbaustufe festlegen. In einer separaten Exchange-Installation prüfen, dass nur ausgewählte Postfächer archiviert werden und entzogene Rechte als Fehler sichtbar sind. [Microsoft-Dokumentation zu EWS-Impersonation](https://learn.microsoft.com/exchange/client-developer/exchange-web-services/impersonation-and-ews-in-exchange)
 2. **Exchange Online und Microsoft 365.** Einen Connector mit zentral registrierter Microsoft-Entra-ID-Anwendung (Azure-App) pro Mandant entwickeln. Ein Mandantenadministrator erteilt einmalig die erforderlichen Anwendungsberechtigungen für die Postfachermittlung und den lesenden Zugriff über Microsoft Graph. MailArchive nutzt OAuth 2.0 Client Credentials für unbeaufsichtigte Voll- und inkrementelle Sicherungen ohne Anmeldung oder OAuth-Freigabe durch einzelne Postfachinhaber. Bei mandantenweiter Berechtigung stehen alle unterstützten Postfächer zur Auswahl. Im Browser lassen sich einzelne, mehrere oder alle verfügbaren Postfächer für die Sicherung auswählen. Die Auswahl steuert den Sicherungsumfang. Eine zusätzliche serverseitige Eingrenzung des App-Zugriffs über Exchange Online Application RBAC soll unterstützt werden. In einem separaten Testmandanten Listenabruf, selektive Sicherung ohne Benutzeranmeldung und die Behandlung fehlender Berechtigungen prüfen. Die archivierten Nachrichten bleiben lokal durchsuchbar. [Microsoft-Dokumentation zu App-Berechtigungen in Exchange Online](https://learn.microsoft.com/en-us/exchange/permissions-exo/application-rbac)
